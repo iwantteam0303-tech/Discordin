@@ -3,44 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>디스코드 작업 증명(PoW) 인증기</title>
+    <title>라임의 sha-256 계산기</title>
     <style>
         body { font-family: 'Pretendard', sans-serif; padding: 20px; background-color: #313338; color: #dbdee1; display: flex; justify-content: center; margin-top: 50px; }
         .container { max-width: 400px; width: 100%; background-color: #2b2d31; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
         h2 { text-align: center; color: #ffffff; margin-bottom: 20px; }
         label { display: block; margin-top: 15px; font-size: 14px; font-weight: bold; color: #b5bac1; }
-        input { width: 100%; padding: 12px; margin-top: 8px; box-sizing: border-box; border-radius: 6px; border: none; background-color: #1e1f22; color: white; outline: none; }
-        input:focus { border: 1px solid #5865F2; }
+        input[type="text"], input[type="number"] { width: 100%; padding: 12px; margin-top: 8px; box-sizing: border-box; border-radius: 6px; border: none; background-color: #1e1f22; color: white; outline: none; }
+        input[type="text"]:focus, input[type="number"]:focus { border: 1px solid #5865F2; }
+        
+        /* 체크박스 스타일 */
+        .checkbox-group { display: flex; align-items: center; margin-top: 15px; background-color: #1e1f22; padding: 10px 12px; border-radius: 6px; cursor: pointer; }
+        .checkbox-group input[type="checkbox"] { margin: 0 10px 0 0; width: 16px; height: 16px; cursor: pointer; }
+        .checkbox-group label { margin: 0; font-weight: normal; cursor: pointer; color: #dbdee1; }
+
         button { width: 100%; padding: 14px; margin-top: 25px; box-sizing: border-box; border-radius: 6px; border: none; background-color: #5865F2; color: white; cursor: pointer; font-size: 16px; font-weight: bold; transition: background-color 0.2s; }
         button:hover { background-color: #4752C4; }
         button:disabled { background-color: #4f545c; cursor: not-allowed; }
+        
+        #stopBtn { background-color: #da373c; display: none; margin-top: 10px; }
+        #stopBtn:hover { background-color: #c92b30; }
+
         #status { margin-top: 15px; font-size: 13px; color: #faa61a; text-align: center; }
-        #result-box { margin-top: 20px; padding: 15px; background-color: #1e1f22; border-radius: 6px; display: none; word-break: break-all; }
-        .success-text { color: #23a559; font-weight: bold; font-size: 18px; margin-bottom: 10px; display: block;}
+        #result-box { margin-top: 20px; padding: 15px; background-color: #1e1f22; border-radius: 6px; display: none; word-break: break-all; max-height: 300px; overflow-y: auto; }
+        
+        .result-item { background: #2b2d31; padding: 10px; border-radius: 4px; margin-bottom: 8px; border-left: 4px solid #23a559; }
+        .result-item:last-child { margin-bottom: 0; }
+        .pw-text { color: #ffffff; font-weight: bold; font-size: 15px; }
+        .hash-text { color: #949ba4; font-size: 12px; display: block; margin-top: 4px; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h2>디스코드 인증 계산기</h2>
+        <h2>라임의 sha-256 계산기</h2>
         
-        <label>제시된 큰 숫자 (Seed)</label>
-        <input type="text" id="seed" value="28665213308719595586" placeholder="봇이 알려준 숫자를 입력하세요">
-
+        <label>문제 내용 (Seed)</label>
+        <input type="text" id="seed" value="1234567890" placeholder="기준 숫자를 입력하세요">
+        
         <label>시작해야 하는 0의 개수</label>
         <input type="number" id="zeros" value="5" placeholder="예: 5">
 
-        <button id="startBtn" onclick="startMining()">계산 시작 (PassWord 찾기)</button>
+        <label class="checkbox-group">
+            <input type="checkbox" id="stopOnMatch" checked>
+            <label for="stopOnMatch">발견 시 중지</label>
+        </label>
+
+        <button id="startBtn" onclick="startMining()">계산 시작</button>
+        <button id="stopBtn" onclick="stopMining()">계산 중지</button>
+        
         <div id="status"></div>
         
         <div id="result-box">
-            <span class="success-text">찾았습니다!</span>
-            <div id="result-content" style="color: #dbdee1; font-size: 14px;"></div>
+            <div id="result-content"></div>
         </div>
     </div>
 
     <script>
         let isMining = false;
+        let forceStop = false;
 
         async function startMining() {
             if (isMining) return;
@@ -48,52 +69,72 @@
             const seedStr = document.getElementById('seed').value.trim();
             const zeros = parseInt(document.getElementById('zeros').value);
             const prefix = "0".repeat(zeros);
+            const stopOnMatch = document.getElementById('stopOnMatch').checked;
+            
             const statusEl = document.getElementById('status');
             const resultBox = document.getElementById('result-box');
             const resultContent = document.getElementById('result-content');
-            const btn = document.getElementById('startBtn');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
 
             // 초기화
-            statusEl.innerText = "계산 중입니다... (기기 성능에 따라 수십 초 소요될 수 있습니다)";
-            resultBox.style.display = 'none';
-            btn.disabled = true;
+            resultContent.innerHTML = '';
+            statusEl.innerText = "계산 중입니다... (기기 성능에 따라 소요 시간이 다릅니다)";
+            resultBox.style.display = 'block';
+            
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'block';
+            
             isMining = true;
+            forceStop = false;
 
-            // JS 정밀도 한계를 넘는 큰 수 연산을 위해 BigInt 사용
             let seed;
             try {
                 seed = BigInt(seedStr);
             } catch (e) {
                 alert("입력한 Seed 숫자가 올바르지 않습니다.");
                 resetUI();
+                resultBox.style.display = 'none';
                 return;
             }
 
             let password = 0n;
-            const chunkSize = 5000n; // 브라우저가 멈추지 않도록 한 번에 계산할 해시 개수
+            const chunkSize = 5000n; 
 
             function mineChunk() {
+                if (forceStop) {
+                    statusEl.innerText = "사용자에 의해 계산이 중지되었습니다.";
+                    resetUI();
+                    return;
+                }
+
                 for (let i = 0n; i < chunkSize; i++) {
                     const currentPw = password + i;
-                    
-                    // 곱셈 연산 후 문자열로 변환 (봇의 로직과 동일하게 맞춤)
                     const targetString = (seed * currentPw).toString();
                     const hash = CryptoJS.SHA256(targetString).toString(CryptoJS.enc.Hex);
 
-                    // 해시 결과가 "00000"으로 시작하는지 확인
                     if (hash.startsWith(prefix)) {
-                        statusEl.innerText = "";
-                        resultContent.innerHTML = `디스코드에 명령어 입력:<br><br><strong style="color:white; font-size: 16px; background:#404249; padding:5px; border-radius:4px;">/제출 ${currentPw.toString()}</strong><br><br><span style="font-size:12px; color:#949ba4;">생성된 해시: ${hash}</span>`;
-                        resultBox.style.display = 'block';
-                        resetUI();
-                        return;
+                        // 결과 항목 생성 후 추가
+                        const item = document.createElement('div');
+                        item.className = 'result-item';
+                        item.innerHTML = `<span class="pw-text">Password: ${currentPw.toString()}</span><span class="hash-text">${hash}</span>`;
+                        resultContent.appendChild(item);
+                        
+                        // 자동 스크롤 하단으로 이동
+                        resultBox.scrollTop = resultBox.scrollHeight;
+
+                        // 발견 시 중지 옵션이 켜져있다면 여기서 종료
+                        if (stopOnMatch) {
+                            statusEl.innerText = "값을 찾았습니다. 계산을 종료합니다.";
+                            resetUI();
+                            return;
+                        }
                     }
                 }
 
                 password += chunkSize;
                 statusEl.innerText = `열심히 찾는 중... (현재 시도: ${password.toString()})`;
-
-                // 다음 청크를 이벤트 루프 뒤로 넘겨서 브라우저 UI가 먹통이 되지 않도록 함
+                
                 setTimeout(mineChunk, 0);
             }
 
@@ -101,8 +142,14 @@
 
             function resetUI() {
                 isMining = false;
-                btn.disabled = false;
+                startBtn.style.display = 'block';
+                stopBtn.style.display = 'none';
+                startBtn.disabled = false;
             }
+        }
+
+        function stopMining() {
+            forceStop = true;
         }
     </script>
 </body>
