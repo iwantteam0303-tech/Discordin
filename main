@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>디스코드 작업 증명(PoW) 인증기</title>
+    <style>
+        body { font-family: 'Pretendard', sans-serif; padding: 20px; background-color: #313338; color: #dbdee1; display: flex; justify-content: center; margin-top: 50px; }
+        .container { max-width: 400px; width: 100%; background-color: #2b2d31; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        h2 { text-align: center; color: #ffffff; margin-bottom: 20px; }
+        label { display: block; margin-top: 15px; font-size: 14px; font-weight: bold; color: #b5bac1; }
+        input { width: 100%; padding: 12px; margin-top: 8px; box-sizing: border-box; border-radius: 6px; border: none; background-color: #1e1f22; color: white; outline: none; }
+        input:focus { border: 1px solid #5865F2; }
+        button { width: 100%; padding: 14px; margin-top: 25px; box-sizing: border-box; border-radius: 6px; border: none; background-color: #5865F2; color: white; cursor: pointer; font-size: 16px; font-weight: bold; transition: background-color 0.2s; }
+        button:hover { background-color: #4752C4; }
+        button:disabled { background-color: #4f545c; cursor: not-allowed; }
+        #status { margin-top: 15px; font-size: 13px; color: #faa61a; text-align: center; }
+        #result-box { margin-top: 20px; padding: 15px; background-color: #1e1f22; border-radius: 6px; display: none; word-break: break-all; }
+        .success-text { color: #23a559; font-weight: bold; font-size: 18px; margin-bottom: 10px; display: block;}
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h2>디스코드 인증 계산기</h2>
+        
+        <label>제시된 큰 숫자 (Seed)</label>
+        <input type="text" id="seed" value="28665213308719595586" placeholder="봇이 알려준 숫자를 입력하세요">
+
+        <label>시작해야 하는 0의 개수</label>
+        <input type="number" id="zeros" value="5" placeholder="예: 5">
+
+        <button id="startBtn" onclick="startMining()">계산 시작 (PassWord 찾기)</button>
+        <div id="status"></div>
+        
+        <div id="result-box">
+            <span class="success-text">찾았습니다!</span>
+            <div id="result-content" style="color: #dbdee1; font-size: 14px;"></div>
+        </div>
+    </div>
+
+    <script>
+        let isMining = false;
+
+        async function startMining() {
+            if (isMining) return;
+            
+            const seedStr = document.getElementById('seed').value.trim();
+            const zeros = parseInt(document.getElementById('zeros').value);
+            const prefix = "0".repeat(zeros);
+            const statusEl = document.getElementById('status');
+            const resultBox = document.getElementById('result-box');
+            const resultContent = document.getElementById('result-content');
+            const btn = document.getElementById('startBtn');
+
+            // 초기화
+            statusEl.innerText = "계산 중입니다... (기기 성능에 따라 수십 초 소요될 수 있습니다)";
+            resultBox.style.display = 'none';
+            btn.disabled = true;
+            isMining = true;
+
+            // JS 정밀도 한계를 넘는 큰 수 연산을 위해 BigInt 사용
+            let seed;
+            try {
+                seed = BigInt(seedStr);
+            } catch (e) {
+                alert("입력한 Seed 숫자가 올바르지 않습니다.");
+                resetUI();
+                return;
+            }
+
+            let password = 0n;
+            const chunkSize = 5000n; // 브라우저가 멈추지 않도록 한 번에 계산할 해시 개수
+
+            function mineChunk() {
+                for (let i = 0n; i < chunkSize; i++) {
+                    const currentPw = password + i;
+                    
+                    // 곱셈 연산 후 문자열로 변환 (봇의 로직과 동일하게 맞춤)
+                    const targetString = (seed * currentPw).toString();
+                    const hash = CryptoJS.SHA256(targetString).toString(CryptoJS.enc.Hex);
+
+                    // 해시 결과가 "00000"으로 시작하는지 확인
+                    if (hash.startsWith(prefix)) {
+                        statusEl.innerText = "";
+                        resultContent.innerHTML = `디스코드에 명령어 입력:<br><br><strong style="color:white; font-size: 16px; background:#404249; padding:5px; border-radius:4px;">/제출 ${currentPw.toString()}</strong><br><br><span style="font-size:12px; color:#949ba4;">생성된 해시: ${hash}</span>`;
+                        resultBox.style.display = 'block';
+                        resetUI();
+                        return;
+                    }
+                }
+
+                password += chunkSize;
+                statusEl.innerText = `열심히 찾는 중... (현재 시도: ${password.toString()})`;
+
+                // 다음 청크를 이벤트 루프 뒤로 넘겨서 브라우저 UI가 먹통이 되지 않도록 함
+                setTimeout(mineChunk, 0);
+            }
+
+            mineChunk();
+
+            function resetUI() {
+                isMining = false;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
